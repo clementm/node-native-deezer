@@ -7,24 +7,48 @@
 
 using namespace Nan;
 
-struct SignalKit {
-  std::queue<int> queue;
-  uv_cond_t *condition;
-  uv_mutex_t *mutex;
-};
+#include <deezer-connect.h>
+#include <deezer-player.h>
+
+#define REGISTER_EVENT(wrapper, event)    \
+  wrapper->queue.push(event);             \
+  uv_mutex_lock(wrapper->mutex);          \
+  uv_cond_signal(wrapper->condition);     \
+  uv_mutex_unlock(wrapper->mutex);
 
 class EventPool : public Nan::AsyncProgressQueueWorker<char> {
  public:
-  EventPool(Nan::Callback *callback, Nan::Callback *eventCb, SignalKit *signal);
+  EventPool(Nan::Callback *callback, Nan::Callback *eventCb);
   ~EventPool();
 
   void Execute (const AsyncProgressQueueWorker::ExecutionProgress& progress);
   void HandleProgressCallback(const char *data, size_t count);
 
-  private:
+  protected:
     Nan::Callback *eventCb;
-    SignalKit *signal;
-    std::queue<int> eventQueue;
+    uv_cond_t *condition;
+    uv_mutex_t *mutex;
+    std::queue<int> queue;
+};
+
+class ConnectEventPool : public EventPool {
+  public:
+    ConnectEventPool(Nan::Callback *callback, Nan::Callback *eventCb) : EventPool(callback, eventCb) {}
+    static void dzConnectEventCallback(
+      dz_connect_handle handle,
+      dz_connect_event_handle event,
+      void *delegate
+    );
+};
+
+class PlayerEventPool : public EventPool {
+  public:
+    PlayerEventPool(Nan::Callback *callback, Nan::Callback *eventCb) : EventPool(callback, eventCb) {}
+    static void dzPlayerEventCallback(
+      dz_player_handle handle,
+      dz_player_event_handle event,
+      void *delegate
+    );
 };
 
 #endif

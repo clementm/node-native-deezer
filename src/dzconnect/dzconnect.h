@@ -8,6 +8,7 @@
 
 #include "../utils.h"
 #include "../eventpool/eventpool.h"
+#include "../asynchandler/asynchandler.h"
 
 #include <deezer-connect.h>
 #include <deezer-player.h>
@@ -22,10 +23,6 @@ class DZConnectHandler : public Nan::ObjectWrap {
   explicit DZConnectHandler(dz_connect_configuration configuration, Nan::Callback *onConnectEventCb);
   ~DZConnectHandler();
 
-  SignalKit* getSignal() {
-    return signal;
-  }
-
   static void dzConnectEventCallback(
     dz_connect_handle handle,
     dz_connect_event_handle event,
@@ -38,12 +35,13 @@ class DZConnectHandler : public Nan::ObjectWrap {
   static NAN_METHOD(CachePathSet);
   static NAN_METHOD(SetAccessToken);
   static NAN_METHOD(OfflineMode);
+  
+  static NAN_METHOD(GetEventTypes);
 
   static inline Nan::Persistent<v8::Function> & constructor();
 
   dz_connect_handle dzconnect;
-  EventPool *eventPool;
-  SignalKit *signal;
+  ConnectEventPool *eventPool;
 };
 
 #endif

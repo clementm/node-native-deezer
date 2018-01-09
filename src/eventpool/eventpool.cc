@@ -1,23 +1,41 @@
 #include "eventpool.h"
 
-EventPool::EventPool(Nan::Callback *callback, Nan::Callback *eventCb, SignalKit *signal)
-  : AsyncProgressQueueWorker(callback), eventCb(eventCb), signal(signal) {}
+EventPool::EventPool(Nan::Callback *callback, Nan::Callback *eventCb)
+  : AsyncProgressQueueWorker(callback), eventCb(eventCb) {}
 
 EventPool::~EventPool() {
   delete eventCb;
 }
 
-void EventPool::Execute (const AsyncProgressQueueWorker::ExecutionProgress& progress) {
-  signal->condition = new uv_cond_t();
-  signal->mutex = new uv_mutex_t();
+void ConnectEventPool::dzConnectEventCallback(
+  dz_connect_handle handle,
+  dz_connect_event_handle event,
+  void *delegate
+) {
+  ConnectEventPool* wrapper = (ConnectEventPool*)delegate;
+  
+  REGISTER_EVENT(wrapper, dz_connect_event_get_type(event))
+}
 
-  uv_cond_init(signal->condition);
-  uv_mutex_init(signal->mutex);
+void PlayerEventPool::dzPlayerEventCallback(
+  dz_player_handle handle,
+  dz_player_event_handle event,
+  void *delegate
+) {
+  PlayerEventPool* wrapper = (PlayerEventPool*)delegate;
+  
+  REGISTER_EVENT(wrapper, dz_player_event_get_type(event))
+}
+
+void EventPool::Execute (const AsyncProgressQueueWorker::ExecutionProgress& progress) {
+  condition = new uv_cond_t();
+  mutex = new uv_mutex_t();
+
+  uv_cond_init(condition);
+  uv_mutex_init(mutex);
 
   while (true) {
-    uv_mutex_lock(signal->mutex);
-    uv_cond_wait(signal->condition, signal->mutex);
-    uv_mutex_unlock(signal->mutex);
+    uv_cond_wait(condition, mutex);
 
     progress.Send(0, 0);
   }
@@ -26,15 +44,13 @@ void EventPool::Execute (const AsyncProgressQueueWorker::ExecutionProgress& prog
 void EventPool::HandleProgressCallback(const char* data, size_t count) {
   Nan::HandleScope scope;
 
-  while (!signal->queue.empty()) {
-    int event = signal->queue.front();
-    signal->queue.pop();
+  while (!queue.empty()) {
+    int event = queue.front();
+    queue.pop();
 
     v8::Local<v8::Value> argv[] = {
         Nan::New<v8::Integer>(event)
     };
-
-    std::cout << "event" << eventCb << std::endl;
 
     eventCb->Call(1, argv);
   }

@@ -7,6 +7,8 @@
 #include <unistd.h>
 
 #include "../utils.h"
+#include "../asynchandler/asynchandler.h"
+#include "../eventpool/eventpool.h"
 
 #include <deezer-connect.h>
 #include <deezer-player.h>
@@ -35,9 +37,12 @@ class DZPlayerHandler : public Nan::ObjectWrap {
   static NAN_METHOD(Play);
   static NAN_METHOD(Stop);
 
+  static NAN_METHOD(GetEventTypes);
+
   static inline Nan::Persistent<v8::Function> & constructor();
 
   dz_player_handle dzplayer;
+  PlayerEventPool * eventPool;
 };
 
 #endif

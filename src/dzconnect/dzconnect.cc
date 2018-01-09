@@ -1,6 +1,6 @@
 #include "dzconnect.h"
 
-NAN_METHOD(GetEventTypes) {
+NAN_METHOD(DZConnectHandler::GetEventTypes) {
   const v8::Local<v8::Object> types = Nan::New<v8::Object>();
 
   addType(types, "DZ_CONNECT_EVENT_USER_OFFLINE_AVAILABLE", DZ_CONNECT_EVENT_USER_OFFLINE_AVAILABLE);
@@ -34,7 +34,10 @@ NAN_MODULE_INIT(DZConnectHandler::Init) {
   Nan::Set(target, Nan::New("DZConnect").ToLocalChecked(),
     Nan::GetFunction(tpl).ToLocalChecked());
   
-  Nan::Set(target, Nan::New<v8::String>("getEventTypes").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(GetEventTypes)->GetFunction());
+  Nan::Set(
+    target->Get(Nan::New("DZConnect").ToLocalChecked())->ToObject(),
+    Nan::New<v8::String>("getEventTypes").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(GetEventTypes)->GetFunction()
+  );
 }
 
 dz_connect_handle DZConnectHandler::getHandle() {
@@ -42,29 +45,15 @@ dz_connect_handle DZConnectHandler::getHandle() {
 }
 
 DZConnectHandler::DZConnectHandler(dz_connect_configuration configuration, Nan::Callback *onConnectEventCb) {
-  configuration.connect_event_cb = DZConnectHandler::dzConnectEventCallback;
+  configuration.connect_event_cb = ConnectEventPool::dzConnectEventCallback;
   dzconnect = dz_connect_new(&configuration);
 
-  signal = new SignalKit();
-  eventPool = new EventPool(onConnectEventCb, onConnectEventCb, signal);
+
+  eventPool = new ConnectEventPool(onConnectEventCb, onConnectEventCb);
   AsyncQueueWorker(eventPool);
 }
 
 DZConnectHandler::~DZConnectHandler() {}
-
-void DZConnectHandler::dzConnectEventCallback(
-  dz_connect_handle handle,
-  dz_connect_event_handle event,
-  void *delegate
-) {
-  DZConnectHandler* wrapper = (DZConnectHandler*)delegate;
-  
-  wrapper->signal->queue.push(dz_connect_event_get_type(event));
-
-  uv_mutex_lock(wrapper->signal->mutex);
-  uv_cond_signal(wrapper->signal->condition);
-  uv_mutex_unlock(wrapper->signal->mutex);
-}
 
 NAN_METHOD(DZConnectHandler::New) {
   if (info.IsConstructCall()) {
@@ -72,7 +61,6 @@ NAN_METHOD(DZConnectHandler::New) {
     struct dz_connect_configuration configuration = buildConfiguration(settings);
 
     Nan::Callback *onConnectEventCb = new Callback(Nan::To<v8::Function>(settings->Get(Nan::New("connectEventCb").ToLocalChecked())).ToLocalChecked());
-    onConnectEventCb->Call(0, {});
     DZConnectHandler *handle = new DZConnectHandler(configuration, onConnectEventCb);
     handle->Wrap(info.This());
     info.GetReturnValue().Set(info.This());
@@ -91,90 +79,27 @@ NAN_METHOD(DZConnectHandler::DebugLogDisable) {
 
 NAN_METHOD(DZConnectHandler::Activate) {
   OBJECT_CONTEXT(DZConnectHandler)
-  dz_error_t error = dz_connect_activate(wrapper->dzconnect, wrapper);
+  dz_error_t error = dz_connect_activate(wrapper->dzconnect, wrapper->eventPool);
 
   HANDLE_ERROR(error)
 }
 
 NAN_METHOD(DZConnectHandler::CachePathSet) {
   OBJECT_CONTEXT(DZConnectHandler)
-  dz_error_t error = dz_connect_cache_path_set(wrapper->dzconnect, NULL, NULL, ToString(info[0]->ToString()).c_str());
+  SETUP_ASYNC(info[1], handler, callback)
+
+  dz_error_t error = dz_connect_cache_path_set(wrapper->dzconnect, callback, handler, ToString(info[0]->ToString()).c_str());
 
   HANDLE_ERROR(error)
 }
 
-
-typedef struct {
-  uv_cond_t *cond;
-  uv_mutex_t *mutex;
-} signalisation;
-
-class CallbackWorker : public Nan::AsyncWorker {
-  public:
-    CallbackWorker(Nan::Callback *callback, signalisation *sig)
-      : AsyncWorker(callback), sig(sig) {}
-    ~CallbackWorker() {}
-
-    void Execute () {
-
-      std::cout << sig << std::endl;
-
-      sig->cond = new uv_cond_t();
-      sig->mutex = new uv_mutex_t();
-      
-      uv_cond_init(sig->cond);
-      uv_mutex_init(sig->mutex);
-      std::cout << "signalisation : " << sig->cond << std::endl;
-
-
-      // uv_cond_wait(cond, &mutex);
-
-      // // uv_cond_signal(cond);
-
-      // uv_mutex_t mutex;
-      // uv_mutex_init(&mutex);
-
-      uv_mutex_lock(sig->mutex);
-      uv_cond_wait(sig->cond, sig->mutex);
-      uv_mutex_unlock(sig->mutex);
-
-      std::cout << "Hello !" << std::endl;
-    }
-
-    void HandleOKCallback () {
-    }
-
-  private:
-    signalisation *sig;
-};
-
-void onCallbackResponse(
-  void* delegate,
-  void* operation_userdata,
-  dz_error_t status,
-  dz_object_handle result
-) {
-  std::cout << status << " " << result << std::endl;
-  signalisation *sig = (signalisation*)operation_userdata;
-  std::cout << "salut ! " << sig->cond << std::endl;
-  uv_mutex_lock(sig->mutex);
-  uv_cond_signal(sig->cond);
-  uv_mutex_unlock(sig->mutex);
-}
-
 NAN_METHOD(DZConnectHandler::SetAccessToken) {
   OBJECT_CONTEXT(DZConnectHandler)
-  
-  signalisation *sig;
-  sig = new signalisation();
-
-  Nan::Callback *callback = new Nan::Callback(Nan::To<v8::Function>(info[1]).ToLocalChecked());
-
-  AsyncQueueWorker(new CallbackWorker(callback, sig));
+  SETUP_ASYNC(info[1], sig, op_cb)
   
   dz_error_t error = dz_connect_set_access_token(
     wrapper->dzconnect,
-    &onCallbackResponse,
+    op_cb,
     sig,
     ToString(info[0]->ToString()).c_str()
   );
@@ -184,7 +109,9 @@ NAN_METHOD(DZConnectHandler::SetAccessToken) {
 
 NAN_METHOD(DZConnectHandler::OfflineMode) {
   OBJECT_CONTEXT(DZConnectHandler)
-  dz_error_t error = dz_connect_offline_mode(wrapper->dzconnect, NULL, NULL, info[0]->ToBoolean()->BooleanValue());
+  SETUP_ASYNC(info[1], sig, op_cb)
+
+  dz_error_t error = dz_connect_offline_mode(wrapper->dzconnect, op_cb, sig, info[0]->ToBoolean()->BooleanValue());
 
   HANDLE_ERROR(error)
 }
