@@ -1,0 +1,24 @@
+{
+	"name": "native-deezer",
+	"version": "0.1.0",
+	"description": "node.js wrapper for deezer native sdk",
+	"main": "index.js",
+	"dependencies": {
+		"download": "^6.2.5",
+		"download-status": "^2.2.1",
+		"nan": "^2.8.0",
+		"progress": "^2.0.0"
+	},
+	"devDependencies": {},
+	"scripts": {
+		"install": "node download && node-gyp rebuild"
+	},
+	"keywords": [
+		"deezer",
+		"music",
+		"native"
+	],
+	"author": "Clément Michel",
+	"license": "MIT",
+	"gypfile": true
+}
