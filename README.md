@@ -42,7 +42,7 @@ dzconnect.cachePathSet(           // Set cache path
   '/var/tmp/dzrcache_NDK_SAMPLE'
 );
 dzconnect.offlineMode(false);     // Disable offline mode
-dzconnect.setAccessToken('****'); // Set ser access token
+dzconnect.setAccessToken('fr49mph7tV4KY3ukISkFHQysRpdCEbzb958dB320pM15OpFsQs'); // Set user access token
 
 // Instanciate a new DZPlayer connection
 dzplayer = new DZPlayer(dzconnect);

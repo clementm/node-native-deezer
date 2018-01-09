@@ -30,7 +30,7 @@ const setup = () => {
 	dzconnect.cachePathSet('/var/tmp/dzrcache_NDK_SAMPLE');
 	dzconnect.offlineMode(false);
 	dzconnect.setAccessToken(
-		'frmZGRBG5fNJQe2kCnMYN5AxLsciGKnhuFMbTZjwGU2DjIP4Ue'
+		'fr49mph7tV4KY3ukISkFHQysRpdCEbzb958dB320pM15OpFsQs'
 	);
 
 	dzplayer = new DZPlayer(dzconnect);
